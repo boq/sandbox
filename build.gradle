@@ -1,0 +1,80 @@
+buildscript {
+    repositories {
+        maven {
+            url "https://oss.sonatype.org/content/repositories/snapshots/"
+        }
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.guardsquare:proguard-gradle:7.1.1'
+    }
+}
+plugins {
+    id 'java'
+}
+
+sourceCompatibility = 16
+targetCompatibility = 16
+
+group 'org.example'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+def javaHome = System.getProperty('java.home');
+
+task obfuscate(type: proguard.gradle.ProGuardTask, dependsOn: jar) {
+    def target = new File(buildDir, "renamed.jar")
+
+    injars jar.archiveFile
+    outjars target
+
+    libraryjars "${javaHome}/jmods/java.base.jmod", jarfilter: '!**.jar', filter: '!module-info.class'
+
+    printmapping new File(buildDir, "mappings.txt").absolutePath
+
+    dontoptimize
+    dontusemixedcaseclassnames
+    dontshrink
+
+    renamesourcefileattribute 'SourceFile'
+    keepattributes '*'
+
+    repackageclasses ''
+
+    allowaccessmodification
+}
+
+task disassembly() {
+    dependsOn obfuscate
+
+    def pre = jar.archiveFile.get().asFile
+    def post = new File(buildDir, "renamed.jar")
+
+    def filesToProcess = [
+            [pre, "com.example.Key"],
+            [pre, "com.example.ObjectEntry"],
+            [pre, "com.example.RecordEntry"],
+
+            [post, "a"],
+            [post, "b"],
+            [post, "c"],
+    ]
+
+    doLast {
+        filesToProcess.each {
+            def jar = it[0]
+            def cls = it[1]
+            File outFile = new File(buildDir, cls + ".txt")
+            exec {
+                executable "${javaHome}/bin/javap"
+                args "-c", "-p", "-v", "-cp", jar, cls
+                standardOutput outFile.newOutputStream()
+            }
+        }
+    }
+
+}
